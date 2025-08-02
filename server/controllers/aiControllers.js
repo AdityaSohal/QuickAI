@@ -190,21 +190,57 @@ export const removeImageObject = async (req, res) => {
       return res.json({ success: false, message: "Missing image or object name" });
     }
 
-    const uploaded = await cloudinary.uploader.upload(imagePath);
-    const imageurl = cloudinary.url(uploaded.public_id, {
-      transformation: [{ effect: `gen_removal:${object}` }],
+    // Upload the image to Cloudinary with explicit delivery type
+    const uploaded = await cloudinary.uploader.upload(imagePath, {
       resource_type: "image",
+      use_filename: true,
+      unique_filename: true,
+      overwrite: true
     });
+    
+    // Create a URL with transformation for object removal using the Cloudinary SDK
+    // This is more reliable than manual URL construction
+    const transformationUrl = cloudinary.url(uploaded.public_id, {
+      transformation: [{ effect: `gen_removal:${object}` }],
+      secure: true,
+      resource_type: "image",
+      format: "auto",
+      quality: "auto"
+    });
+    
+    console.log('Generated Cloudinary URL:', transformationUrl);
+    console.log('Original upload public_id:', uploaded.public_id);
+    console.log('Original upload secure_url:', uploaded.secure_url);
+    
+    // Verify the transformed image exists by making a HEAD request
+    try {
+      const verifyResponse = await axios.head(transformationUrl);
+      console.log('Transformed image verified:', verifyResponse.status);
+    } catch (fetchError) {
+      console.warn('Warning: Could not verify transformed image:', fetchError.message);
+      // Continue anyway as the URL should still work
+    }
+
+    const prompt = `Remove ${object} from image`;
 
     await sql`
       INSERT INTO creations (user_id, prompt, content, type)
-      VALUES (${userId}, 'Remove ${object} from image', ${imageurl}, 'image')
+      VALUES (${userId}, ${prompt}, ${transformationUrl}, 'image')
     `;
 
-    res.json({ success: true, content: imageurl });
+    res.json({ success: true, content: transformationUrl });
   } catch (error) {
-    console.error(error.message);
-    res.json({ success: false, message: error.message });
+    console.error('Error in removeImageObject:', error);
+    res.json({ success: false, message: error.message || 'Failed to process image' });
+  } finally {
+    // Clean up the uploaded file if it exists
+    if (req.file?.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.warn('Failed to clean up uploaded file:', cleanupError.message);
+      }
+    }
   }
 };
 

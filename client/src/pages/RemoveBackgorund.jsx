@@ -1,5 +1,5 @@
 import { Eraser, Sparkles } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
@@ -11,7 +11,19 @@ const RemoveBackgorund = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [processedImage, setProcessedImage] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
   const { getToken } = useAuth();
+
+  // Create and manage preview URL when file is selected
+  useEffect(() => {
+    if (selectedFile) {
+      const objectUrl = URL.createObjectURL(selectedFile);
+      setPreviewUrl(objectUrl);
+      
+      // Clean up the URL when component unmounts or file changes
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+  }, [selectedFile]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -21,6 +33,7 @@ const RemoveBackgorund = () => {
         return;
       }
       setSelectedFile(file);
+      setProcessedImage(''); // Clear any previous processed image
     }
   };
 
@@ -50,6 +63,7 @@ const RemoveBackgorund = () => {
       );
 
       if (data.success) {
+        console.log('Processed Image URL:', data.content); // Log the processed image URL
         setProcessedImage(data.content);
         toast.success('Background removed successfully!');
       } else {
@@ -87,6 +101,17 @@ const RemoveBackgorund = () => {
         />
         <p className='text-xs text-gray-500 font-light mt-1'>Supports jpeg, png and other image formats (Max 10MB)</p>
         
+        {previewUrl && (
+          <div className='mt-4'>
+            <p className='text-sm font-medium mb-2'>Preview:</p>
+            <img 
+              src={previewUrl} 
+              alt="Preview" 
+              className='max-w-full max-h-60 object-contain rounded-lg border border-gray-200' 
+            />
+          </div>
+        )}
+        
         <button 
           type='submit'
           disabled={loading || !selectedFile}
@@ -114,6 +139,12 @@ const RemoveBackgorund = () => {
               src={processedImage} 
               alt="Processed Image" 
               className='max-w-full max-h-80 object-contain rounded-lg shadow-lg'
+              onError={(e) => {
+                console.error('Image failed to load:', processedImage);
+                e.target.onerror = null;
+                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjZjVmNWY1Ii8+PHRleHQgeD0iMTIiIHk9IjEyIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBhbGlnbm1lbnQtYmFzZWxpbmU9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmaWxsPSIjYWFhYWFhIj5JbWFnZSBFcnJvcjwvdGV4dD48L3N2Zz4=';
+                toast.error('Failed to load the processed image');
+              }}
             />
           </div>
         ) : (

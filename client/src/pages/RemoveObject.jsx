@@ -1,5 +1,5 @@
 import { Scissors, Sparkles } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
@@ -12,7 +12,38 @@ const RemoveObject = () => {
   const [object, setObject] = useState('');
   const [loading, setLoading] = useState(false);
   const [processedImage, setProcessedImage] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [imageLoading, setImageLoading] = useState(false);
   const { getToken } = useAuth();
+
+  // Clear preview when a new file is selected
+  useEffect(() => {
+    if (selectedFile) {
+      const objectUrl = URL.createObjectURL(selectedFile);
+      setPreviewUrl(objectUrl);
+      
+      // Clean up the URL when component unmounts or file changes
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+  }, [selectedFile]);
+
+  // Add a timestamp to Cloudinary URL to prevent caching issues
+  const getUncachedUrl = (url) => {
+    if (!url) return '';
+    // Check if the URL is a Cloudinary URL
+    if (url.includes('cloudinary.com')) {
+      // For Cloudinary URLs, add the timestamp as a transformation parameter
+      // Fix the double slash issue and ensure proper URL construction
+      const parts = url.split('/upload/');
+      if (parts.length === 2) {
+        // Ensure we don't add double slashes
+        return `${parts[0]}/upload/t_${Date.now()}/${parts[1].replace(/^\/+/, '')}`;
+      }
+    }
+    // For other URLs, add as a query parameter
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${new Date().getTime()}`;
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -22,6 +53,7 @@ const RemoveObject = () => {
         return;
       }
       setSelectedFile(file);
+      setProcessedImage(''); // Clear any previous processed image
     }
   };
 
@@ -40,6 +72,7 @@ const RemoveObject = () => {
 
     try {
       setLoading(true);
+      setProcessedImage(''); // Clear any previous processed image
       const formData = new FormData();
       formData.append('image', selectedFile);
       formData.append('object', object.trim());
@@ -57,18 +90,139 @@ const RemoveObject = () => {
       );
 
       if (data.success) {
-        setProcessedImage(data.content);
+        console.log('Processed Image URL:', data.content); // Log the processed image URL
+        
+        // Debug the URL structure
+        debugCloudinaryUrl(data.content);
+        
+        // Verify the image URL before setting it
+        verifyImageUrl(data.content).then(isValid => {
+          if (isValid) {
+            setImageLoading(true);
+            // Add timestamp to URL to prevent caching
+            setProcessedImage(getUncachedUrl(data.content));
+          } else {
+            // If verification fails, try a direct approach
+            console.log('Image verification failed, trying direct URL...');
+            // Extract the public ID and create a direct URL
+            if (data.content.includes('cloudinary.com')) {
+              const parts = data.content.split('/upload/');
+              if (parts.length === 2) {
+                const publicIdParts = parts[1].split('/');
+                const publicId = publicIdParts[publicIdParts.length - 1].split('.')[0]; // Remove extension if any
+                const directUrl = `${parts[0]}/upload/e_gen_removal:${object}/f_auto,q_auto/${publicId}`;
+                console.log('Using direct URL:', directUrl);
+                setImageLoading(true);
+                setProcessedImage(directUrl);
+              } else {
+                toast.error('Failed to process image URL');
+              }
+            } else {
+              toast.error('Failed to process image URL');
+            }
+          }
+        }).catch(err => {
+          console.error('Error verifying image:', err);
+          setImageLoading(true);
+          setProcessedImage(getUncachedUrl(data.content)); // Try anyway
+        });
+        
         toast.success('Object removed successfully!');
       } else {
         toast.error(data.message || 'Failed to remove object');
       }
     } catch (error) {
       console.error('Error removing object:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to remove object. Please try again later.';
+      const errorMessage =
+        error.response?.data?.message || 'Failed to remove object. Please try again later.';
       toast.error(errorMessage);
       setProcessedImage('');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Function to verify if an image URL is valid
+  const verifyImageUrl = (url) => {
+    return new Promise((resolve) => {
+      if (!url) {
+        resolve(false);
+        return;
+      }
+      
+      const img = new Image();
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+      
+      // Set a timeout in case the image takes too long to load
+      setTimeout(() => resolve(false), 5000);
+    });
+  };
+
+  // Debug function to analyze Cloudinary URL structure
+  const debugCloudinaryUrl = (url) => {
+    if (!url) {
+      console.log('URL is empty');
+      return;
+    }
+    
+    console.log('Analyzing URL:', url);
+    
+    if (url.includes('cloudinary.com')) {
+      console.log('✅ URL contains cloudinary.com');
+      
+      const parts = url.split('/upload/');
+      console.log('URL parts after splitting by /upload/:', parts);
+      
+      if (parts.length === 2) {
+        console.log('✅ URL has correct base structure');
+        console.log('Base URL:', parts[0]);
+        console.log('Transformation and public ID part:', parts[1]);
+        
+        // Check for double slashes
+        if (parts[1].startsWith('/')) {
+          console.log('⚠️ Warning: Double slash detected after /upload/');
+        }
+        
+        // Check for transformation parameters
+        if (parts[1].includes('gen_removal')) {
+          console.log('✅ URL contains gen_removal transformation');
+        } else {
+          console.log('⚠️ Warning: gen_removal transformation not found');
+        }
+      } else {
+        console.log('⚠️ Warning: URL does not have expected /upload/ structure');
+      }
+    } else {
+      console.log('⚠️ Warning: URL does not contain cloudinary.com');
+    }
+  };
+
+  // Function to retry loading the image if it fails
+  const retryLoadImage = () => {
+    if (processedImage) {
+      setImageLoading(true);
+      // For Cloudinary URLs, create a completely new URL with a new timestamp
+      if (processedImage.includes('cloudinary.com')) {
+        // Parse the URL more carefully to avoid double slashes
+        const urlParts = processedImage.split('/upload/');
+        if (urlParts.length === 2) {
+          // Extract the transformation part and public ID correctly
+          const publicIdParts = urlParts[1].split('/');
+          // The last part should be the public ID
+          const publicId = publicIdParts[publicIdParts.length - 1];
+          // Reconstruct the URL with proper formatting
+          const newUrl = `${urlParts[0]}/upload/t_${Date.now()}/e_gen_removal:${object}/f_auto,q_auto/${publicId}`;
+          console.log('Retrying with URL:', newUrl);
+          setProcessedImage(newUrl);
+          return;
+        }
+      }
+      // Fallback for non-Cloudinary URLs
+      const newUrl = getUncachedUrl(processedImage.split('?')[0]);
+      console.log('Retrying with URL:', newUrl);
+      setProcessedImage(newUrl);
     }
   };
 
@@ -93,7 +247,7 @@ const RemoveObject = () => {
           placeholder='e.g., watch or spoon, Only single object name'
           required
         />
-        
+
         <p className='mt-4 text-sm font-medium'>Upload Image</p>
         <input
           onChange={handleFileChange}
@@ -103,7 +257,18 @@ const RemoveObject = () => {
           required
         />
         <p className='text-xs text-gray-500 font-light mt-1'>Supports jpeg, png and other image formats (Max 10MB)</p>
-        
+
+        {previewUrl && (
+          <div className='mt-4'>
+            <p className='text-sm font-medium mb-2'>Preview:</p>
+            <img 
+              src={previewUrl} 
+              alt="Preview" 
+              className='max-w-full max-h-60 object-contain rounded-lg border border-gray-200' 
+            />
+          </div>
+        )}
+
         <button
           type='submit'
           disabled={loading || !selectedFile || !object.trim()}
@@ -126,12 +291,32 @@ const RemoveObject = () => {
         </div>
 
         {processedImage ? (
-          <div className='flex-1 flex justify-center items-center'>
-            <img 
-              src={processedImage} 
-              alt="Processed Image" 
+          <div className='flex-1 flex justify-center items-center flex-col'>
+            {imageLoading && (
+              <div className='mb-4 text-sm text-gray-500'>Loading processed image...</div>
+            )}
+            <img
+              src={processedImage}
+              alt="Processed Image"
               className='max-w-full max-h-80 object-contain rounded-lg shadow-lg'
+              onLoad={() => setImageLoading(false)}
+              onError={(e) => {
+                console.error('Image failed to load:', processedImage);
+                setImageLoading(false);
+                e.target.onerror = null;
+                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjZjVmNWY1Ii8+PHRleHQgeD0iMTIiIHk9IjEyIiBmb250LXNpemU9IjEyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBhbGlnbm1lbnQtYmFzZWxpbmU9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmaWxsPSIjYWFhYWFhIj5JbWFnZSBFcnJvcjwvdGV4dD48L3N2Zz4=';
+                toast.error('Failed to load the processed image');
+              }}
+              style={{ display: imageLoading ? 'none' : 'block' }}
             />
+            {!imageLoading && (
+              <button 
+                onClick={retryLoadImage}
+                className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-md text-sm hover:bg-gray-300"
+              >
+                Reload Image
+              </button>
+            )}
           </div>
         ) : (
           <div className='flex-1 flex justify-center items-center'>
