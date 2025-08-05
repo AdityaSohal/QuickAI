@@ -36,7 +36,7 @@ const GenerateImages = () => {
         '/api/ai/generate-images',
         {
           prompt,
-          publish: publish, // Send the publish status to backend
+          publish: publish,
         },
         {
           headers: {
@@ -85,7 +85,7 @@ const GenerateImages = () => {
   };
 
   return (
-    <div className='h-full overflow-y-scroll p-6 flex items-start flex-wrap gap-4 text-slate-700'>
+    <div className='h-full overflow-y-auto p-6 flex items-start flex-wrap gap-4 text-slate-700 relative z-0'>
       {/* left col */}
       <form
         onSubmit={onSubmitHandler}
@@ -124,8 +124,8 @@ const GenerateImages = () => {
         </div>
 
         {/* Toggle public image */}
-        <div className='mt-6 flex items-center gap-3'>
-          <label className='flex items-center gap-2 cursor-pointer text-sm text-slate-700'>
+        <div className='mt-6 flex flex-wrap items-center gap-3'>
+          <label className='flex items-center gap-2 cursor-pointer text-sm text-slate-700 w-full sm:w-auto'>
             <div className='relative'>
               <input
                 type='checkbox'
