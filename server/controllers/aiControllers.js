@@ -1,3 +1,10 @@
+/* The provided code snippet is a Node.js application that includes various functionalities for
+generating content such as blog titles, articles, images, and reviewing resumes using Google's
+Generative AI, Cloudinary for image processing, Axios for HTTP requests, and other modules for file
+handling and database operations. Here's a breakdown of the main functionalities: */
+/* The code snippet you provided is importing various modules and setting up configurations for
+different services in a Node.js application. Here's a breakdown of what each import and
+configuration is doing: */
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 import sql from "../configs/db.js";

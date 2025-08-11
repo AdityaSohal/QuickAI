@@ -1,3 +1,5 @@
+/* This JavaScript code is setting up an Express server for a web application. Here's a breakdown of
+what the code is doing: */
 import express, { Router } from "express"
 import cors from "cors"
 import "dotenv/config"

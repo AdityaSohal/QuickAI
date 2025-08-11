@@ -1,3 +1,7 @@
+/**
+ * The function `connectCloudinary` sets up the configuration for connecting to the Cloudinary service
+ * using the provided environment variables.
+ */
 import {v2 as Cloudinary} from 'cloudinary'
 
 const connectCloudinary = async () => {

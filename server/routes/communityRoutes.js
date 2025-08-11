@@ -1,3 +1,5 @@
+/* This code snippet is setting up a router for handling various routes related to a community feature
+in a Node.js application using Express framework. Here's a breakdown of what each part does: */
 import express from "express";
 import { auth } from "../middleware/auth.js";
 import { upload } from "../configs/multer.js";
